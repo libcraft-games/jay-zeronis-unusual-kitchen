@@ -1,6 +1,7 @@
 import { createStore, Store } from "vuex";
 import createPersistedState from "vuex-persistedstate";
 import { cloneDeep } from "lodash";
+import { defineStore } from "pinia";
 
 // TODO: Figure out how to import this from a TypeScript file not in the
 //       public directory.
@@ -63,7 +64,7 @@ const BASE_VALUES = {
 };
 
 // The state of the game when the game starts or is manually reset.
-const getDefaultGameState = () => {
+const getDefaultGameState = (): GameState => {
   return {
     lastSaveAt: null,
     lastNotableTickAt: null,
@@ -97,154 +98,137 @@ const getDefaultGameState = () => {
   };
 };
 
-export const store: Store<GameState> = createStore({
-  strict: !import.meta.env.PROD,
-  plugins: [
-    createPersistedState({
-      key: "teaShopSave",
-      // Only trigger saving when the triggerSave method is called.
-      filter: (mutation) => {
-        return mutation.type === "triggerSave";
-      },
-    }),
-  ],
-  state() {
-    return getDefaultGameState();
-  },
-  mutations: {
-    tick(state) {
-      state.tick += 1;
-    },
-    brewTea(state, amount = 1) {
-      state.cupsOfTea += amount;
-    },
-    consumeTea(state, amount = 1) {
-      state.cupsOfTea -= amount;
-    },
-    earnMoney(state, amount = 1) {
-      state.money += amount;
-    },
-    spendMoney(state, amount = 1) {
-      state.money -= amount;
-    },
-    increaseTeaPrice(state, amount = 0.01) {
-      state.teaPrice += amount;
-    },
-    decreaseTeaPrice(state, amount = 0.01) {
-      if (state.teaPrice - amount >= 0.01) {
-        state.teaPrice -= amount;
-      } else {
-        state.teaPrice = 0.01;
-        if (state.debugMode) {
-          console.log("Unable to decrease price any further.");
-        }
-      }
-    },
-    recalculateRawDemand(state) {
-      state.rawDemand =
-        BASE_VALUES.demand *
-        state.demandBonuses.level *
-        state.demandBonuses.tastiness;
-    },
-    buyAutobrewer(state, amount = 1) {
-      state.purchases.autobrewer.count += amount;
-    },
-    increasePurchasablePrice(
-      state,
-      payload: { purchasable: Purchasable; amount: number | null }
-    ) {
-      if (payload.amount === null) {
-        payload.amount = 1;
-      }
-      state.purchases[payload.purchasable].price *= Math.pow(
-        state.purchases[payload.purchasable].increaseRate,
-        payload.amount
-      );
-    },
-    setLastNotableTickAt(state, payload: { datetime: number }) {
-      state.lastNotableTickAt = payload.datetime;
-    },
-    upgradeUpgradable(state, payload: { upgradable: Upgradable }) {
-      state.upgrades[payload.upgradable].level += 1;
-      state.upgrades[payload.upgradable].currentOutputMultiplier *=
-        state.upgrades[payload.upgradable].outputMultiplier;
-      state.upgrades[payload.upgradable].nextUpgradeCost *=
-        state.upgrades[payload.upgradable].costMultiplier;
-    },
-    // This mutation automatically triggers the persisted state plugin to activate.
-    triggerSave(state) {
-      state.lastSaveAt = Date.now();
-    },
-    hardReset(_state) {
-      if (localStorage.getItem("teaShopSave") !== null) {
-        localStorage.removeItem("teaShopSave");
-      }
-      store.replaceState(getDefaultGameState());
-    },
-    toggleDebugMode(state) {
-      state.debugMode = !state.debugMode;
-    },
-    recalculateTeaPerTick(state) {
-      state.teaPerTick =
-        (state.purchases.autobrewer.count *
-          state.upgrades.autobrewer.currentOutputMultiplier) /
-        TICKS_PER_SECOND;
-    },
-  },
+export const useGameStateStore = defineStore("gameState", {
+  state: (): GameState => getDefaultGameState(),
   actions: {
     // Have the worker startup in the background and begin ticking.
-    async startup(_context) {
+    // TODO: this uses the old worker.js stuff, is it still needed? should it be moved to the appropriate mutation call? IDK!
+    async startup() {
       worker.postMessage({ name: "startup", tick_rate: TICK_RATE });
     },
     // Handle ticking logic asyncronously from the worker.
-    async tick(context) {
+    // TODO: this uses the old worker.js stuff, is it still needed? should it be moved to the appropriate mutation call? IDK!
+    async tick() {
       worker.postMessage({
-        name: "tick",
-        state: cloneDeep(context.state),
+        name: "increaseTick",
+        state: cloneDeep(this),
         ticks_per_second: TICKS_PER_SECOND,
       });
     },
-    brewTea(context) {
-      context.commit("brewTea");
-    },
-    sellTea(context, { amount }) {
-      if (context.state.debugMode) {
+    sellTea(amount: number) {
+      if (this.debugMode) {
         console.log(`Selling ${amount} cups of tea`);
       }
       if (amount < 0) {
-        if (context.state.debugMode) {
+        if (this.debugMode) {
           console.log("Cannot sell negative amounts of tea.");
         }
         amount = 0;
       }
-      context.commit("consumeTea", amount);
-      context.commit("earnMoney", amount * context.state.teaPrice);
+      this.consumeTea(amount);
+      this.earnMoney(amount * this.teaPrice);
     },
-    upgradeUpgradable(context, { upgradable }: { upgradable: Upgradable }) {
-      context.commit(
-        "consumeTea",
-        context.state.upgrades[upgradable].nextUpgradeCost
-      );
-      context.commit("upgradeUpgradable", { upgradable: upgradable });
-      context.commit("recalculateTeaPerTick");
+    purchaseUpgradable({ upgradable }: { upgradable: Upgradable }) {
+      this.consumeTea(this.upgrades[upgradable].nextUpgradeCost);
+      this.upgradeUpgradable({ upgradable: upgradable });
+      this.recalculateTeaPerTick();
     },
-    buyAutobrewer(context, { amount }) {
-      let increaseRate = context.state.purchases.autobrewer.increaseRate;
+    buyAutobrewer(amount: number) {
+      let increaseRate = this.purchases.autobrewer.increaseRate;
       let price =
-        (context.state.purchases.autobrewer.price *
+        (this.purchases.autobrewer.price *
           (1 - Math.pow(increaseRate, amount))) /
         (1 - increaseRate);
-      context.commit("consumeTea", price);
-      context.commit("increasePurchasablePrice", {
+      this.consumeTea(price);
+      this.increasePurchasablePrice({
         purchasable: "autobrewer",
         amount: amount,
       });
-      context.commit("buyAutobrewer", amount);
-      context.commit("recalculateTeaPerTick");
+      this.increaseAutobrewerCount(amount);
+      this.recalculateTeaPerTick();
     },
     // Brew based on the number of autobrewers we have, divided by the number of ticks that occur per second.
-    autobrew(context) {
-      context.commit("brewTea", context.state.teaPerTick);
+    autobrew() {
+      this.brewTea(this.teaPerTick);
+    },
+    // Previously Mutations. They're the good children this migration.
+    incrementTick() {
+      this.tick++;
+    },
+    brewTea(amount = 1) {
+      this.cupsOfTea += amount;
+    },
+    consumeTea(amount = 1) {
+      this.cupsOfTea -= amount;
+    },
+    earnMoney(amount = 1) {
+      this.money += amount;
+    },
+    spendMoney(amount = 1) {
+      this.money -= amount;
+    },
+    increaseTeaPrice(amount = 0.01) {
+      this.teaPrice += amount;
+    },
+    decreaseTeaPrice(amount = 0.01) {
+      if (this.teaPrice - amount >= 0.01) {
+        this.teaPrice -= amount;
+      } else {
+        this.teaPrice = 0.01;
+        if (this.debugMode) {
+          console.log("Unable to decrease price any further.");
+        }
+      }
+    },
+    recalculateRawDemand() {
+      this.rawDemand =
+        BASE_VALUES.demand *
+        this.demandBonuses.level *
+        this.demandBonuses.tastiness;
+    },
+    increaseAutobrewerCount(amount = 1) {
+      this.purchases.autobrewer.count += amount;
+    },
+    increasePurchasablePrice(payload: {
+      purchasable: Purchasable;
+      amount: number | null;
+    }) {
+      if (payload.amount === null) {
+        payload.amount = 1;
+      }
+      this.purchases[payload.purchasable].price *= Math.pow(
+        this.purchases[payload.purchasable].increaseRate,
+        payload.amount
+      );
+    },
+    setLastNotableTickAt(payload: { datetime: number }) {
+      this.lastNotableTickAt = payload.datetime;
+    },
+    upgradeUpgradable(payload: { upgradable: Upgradable }) {
+      this.upgrades[payload.upgradable].level++;
+      this.upgrades[payload.upgradable].currentOutputMultiplier *=
+        this.upgrades[payload.upgradable].outputMultiplier;
+      this.upgrades[payload.upgradable].nextUpgradeCost *=
+        this.upgrades[payload.upgradable].costMultiplier;
+    },
+    // This mutation automatically triggers the persisted state plugin to activate.
+    triggerSave() {
+      this.lastSaveAt = Date.now();
+    },
+    hardReset() {
+      if (localStorage.getItem("teaShopSave") !== null) {
+        localStorage.removeItem("teaShopSave");
+      }
+      this.$state = getDefaultGameState();
+    },
+    toggleDebugMode() {
+      this.debugMode = !this.debugMode;
+    },
+    recalculateTeaPerTick() {
+      this.teaPerTick =
+        (this.purchases.autobrewer.count *
+          this.upgrades.autobrewer.currentOutputMultiplier) /
+        TICKS_PER_SECOND;
     },
   },
 });
