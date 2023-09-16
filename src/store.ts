@@ -7,7 +7,7 @@ const worker = new Worker("./worker.js");
 
 export const TICK_RATE = 200;
 export const TICKS_PER_SECOND = 1000 / TICK_RATE;
-export const SAVE_STATE_KEY = "teaShopSave";
+export const SAVE_STATE_KEY = "teaShopSaveState";
 
 worker.onmessage = (event) => {
   switch (event.data.name) {
@@ -132,13 +132,11 @@ const getDefaultGameState = (): GameState => {
   };
 };
 
-export const useGameStateStore = defineStore("gameState", {
-  state: (): GameState => {
-    return getDefaultGameState();
-  },
+export const useGameStateStore = defineStore("gameStore", {
+  state: (): GameState => getDefaultGameState(),
   persist: {
     storage: localStorage,
-    paths: [SAVE_STATE_KEY],
+    key: SAVE_STATE_KEY,
   },
   getters: {
     rawDemand(): number {
