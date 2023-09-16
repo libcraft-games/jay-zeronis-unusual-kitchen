@@ -1,23 +1,22 @@
 <script lang="ts">
 import { computed, defineComponent, ref } from 'vue';
-import { useStore } from 'vuex';
-import { State } from '../store';
+import { useGameStateStore } from '../store';
 
 export default defineComponent({
   name: 'Options',
   setup(_props, _context) {
-    const store = useStore<State>();
+    const store = useGameStateStore();
 
     const hardResetGame = () => {
       if (confirm('This will permanently erase ALL your progress, nothing will be persisted. Are you absolutely sure you want to reset your game?')) {
-        store.commit('hardReset');
+        store.hardReset();
       }
     };
 
-    const lastSaveAt = computed(() => store.state.lastSaveAt);
-    const debugMode = computed(() => store.state.debugMode);
-    const toggleDebugMode = () => store.commit('toggleDebugMode');
-    const saveGame = () => store.commit('triggerSave');
+    const lastSaveAt = computed(() => store.lastSaveAt);
+    const debugMode = computed(() => store.debugMode);
+    const toggleDebugMode = () => store.toggleDebugMode();
+    const saveGame = () => store.triggerSave();
     const exportButtonText = ref('Export Save (copies to clipboard)');
 
     const importToggled = ref(false);

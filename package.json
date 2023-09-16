@@ -10,9 +10,7 @@
     "lodash": "^4.17.21",
     "millify": "^4.0.0",
     "pinia": "^2.1.6",
-    "vue": "^3.3.4",
-    "vuex": "^4.0.2",
-    "vuex-persistedstate": "^4.0.0"
+    "vue": "^3.3.4"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.198",

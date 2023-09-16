@@ -18,7 +18,7 @@ const UNIT_NAMES = [
   "Duodecillion",
   "Tredecillion",
   "Quattuordecillion",
-  "Quindecillion",
+  "Undecillion",
   "Sexdecillion",
   "Septendecillion",
   "Octodecillion",
@@ -42,7 +42,7 @@ const UNIT_NAMES = [
   "Sestrigintillion",
   "Septentrigintillion",
   "Octotrigintillion",
-  "Noventrigintillion"
+  "Noventrigintillion",
 ];
 
 const UNIT_SHORT_NAMES = [
@@ -86,34 +86,39 @@ const UNIT_SHORT_NAMES = [
   "SxTg",
   "SpTg",
   "OTg",
-  "NTg"
+  "NTg",
 ];
 
 export type HumanizeOptions = {
-  short: boolean,
-  lowercase: boolean,
-  money: boolean
-}
+  short: boolean;
+  lowercase: boolean;
+  money: boolean;
+};
 
 const DEFAULT_OPTIONS: HumanizeOptions = {
   short: false,
   lowercase: false,
-  money: false
-}
+  money: false,
+};
 
 /**
  * Transform large numbers into readable values for humans.
  *
  * Example:
- * 
+ *
  *     humanize(100_000_000); // => "100 Billion"
  *     humanize(100_000_000_000); // => "100 Billion"
  *     humanize(100_000_000, { short: true ]); // => "100M"
  *     humanize(100_000_000, { lowercase: true }); // => "100 million"
  *
  */
-export const humanize = (value: number, options?: Partial<HumanizeOptions>): string => {
-  const opts: HumanizeOptions = options ? { ...DEFAULT_OPTIONS, ...options } : DEFAULT_OPTIONS;
+export const humanize = (
+  value: number,
+  options?: Partial<HumanizeOptions>
+): string => {
+  const opts: HumanizeOptions = options
+    ? { ...DEFAULT_OPTIONS, ...options }
+    : DEFAULT_OPTIONS;
 
   const units = opts.short ? UNIT_SHORT_NAMES : UNIT_NAMES;
 
@@ -125,6 +130,6 @@ export const humanize = (value: number, options?: Partial<HumanizeOptions>): str
     precision: 2,
     units: units,
     lowercase: opts.lowercase,
-    space: !opts.short
+    space: !opts.short,
   });
-}
+};

@@ -1,5 +1,3 @@
-import { createStore, Store } from "vuex";
-import createPersistedState from "vuex-persistedstate";
 import { cloneDeep } from "lodash";
 import { defineStore } from "pinia";
 
@@ -106,13 +104,11 @@ export const useGameStateStore = defineStore("gameState", {
     async startup() {
       worker.postMessage({ name: "startup", tick_rate: TICK_RATE });
     },
-    // Handle ticking logic asyncronously from the worker.
+    // Handle ticking logic asynchronously from the worker.
     // TODO: this uses the old worker.js stuff, is it still needed? should it be moved to the appropriate mutation call? IDK!
     async tick() {
       worker.postMessage({
-        name: "increaseTick",
-        state: cloneDeep(this),
-        ticks_per_second: TICKS_PER_SECOND,
+        name: "tick",
       });
     },
     sellTea(amount: number) {
@@ -230,18 +226,8 @@ export const useGameStateStore = defineStore("gameState", {
           this.upgrades.autobrewer.currentOutputMultiplier) /
         TICKS_PER_SECOND;
     },
+    replaceState(savedState: GameState) {
+      this.$state = savedState;
+    },
   },
 });
-
-// Handle incoming messages from the worker as mutations and actions.
-worker.onmessage = (e) => {
-  if (e.data.type === "mutation") {
-    typeof e.data.payload === "undefined"
-      ? store.commit(e.data.method)
-      : store.commit(e.data.method, e.data.payload);
-  } else if (e.data.type === "action") {
-    typeof e.data.payload === "undefined"
-      ? store.dispatch(e.data.method)
-      : store.dispatch(e.data.method, e.data.payload);
-  }
-};

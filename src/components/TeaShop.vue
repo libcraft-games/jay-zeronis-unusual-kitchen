@@ -1,7 +1,6 @@
 <script lang="ts">
 import { computed, defineComponent } from 'vue';
-import { useStore } from 'vuex';
-import { State, TICKS_PER_SECOND, TICK_RATE } from '../store';
+import { useGameStateStore, TICKS_PER_SECOND, TICK_RATE } from '../store';
 import Options from './Options.vue';
 
 export default defineComponent({
@@ -10,31 +9,31 @@ export default defineComponent({
     Options
   },
   setup(_props, _context) {
-    const store = useStore<State>();
-    const cupsOfTea = computed(() => store.state.cupsOfTea);
-    const teaPerSecond = computed(() => Math.round(store.state.teaPerTick * TICKS_PER_SECOND));
-    const roundedCupsOfTea = computed(() => Math.round(store.state.cupsOfTea));
-    const autobrewerCount = computed(() => store.state.purchases.autobrewer.count);
-    const money = computed(() => store.state.money);
-    const teaPrice = computed(() => store.state.teaPrice);
-    const roundedTeaPrice = computed(() => store.state.teaPrice.toFixed(2));
-    const demand = computed(() => ((store.state.rawDemand / 100) * Math.pow((0.8 / store.state.teaPrice), 1.15)).toFixed(2));
+    const store = useGameStateStore();
+    const cupsOfTea = computed(() => store.cupsOfTea);
+    const teaPerSecond = computed(() => Math.round(store.teaPerTick * TICKS_PER_SECOND));
+    const roundedCupsOfTea = computed(() => Math.round(store.cupsOfTea));
+    const autobrewerCount = computed(() => store.purchases.autobrewer.count);
+    const money = computed(() => store.money);
+    const teaPrice = computed(() => store.teaPrice);
+    const roundedTeaPrice = computed(() => store.teaPrice.toFixed(2));
+    const demand = computed(() => ((store.rawDemand / 100) * Math.pow((0.8 / store.teaPrice), 1.15)).toFixed(2));
 
-    const brewTea = () => store.dispatch('brewTea');
-    const increaseTeaPrice = (amount: number) => store.commit('increaseTeaPrice', amount);
-    const decreaseTeaPrice = (amount: number) => store.commit('decreaseTeaPrice', amount);
+    const brewTea = () => store.brewTea();
+    const increaseTeaPrice = (amount: number) => store.increaseTeaPrice(amount);
+    const decreaseTeaPrice = (amount: number) => store.decreaseTeaPrice(amount)
 
-    const autobrewerCost = computed(() => store.state.purchases.autobrewer.price);
+    const autobrewerCost = computed(() => store.purchases.autobrewer.price);
     const multipleAutobrewerCost = computed(() => {
-      return (amount: number) => Math.round(autobrewerCost.value * ((1 - Math.pow(store.state.purchases.autobrewer.increaseRate, amount)) / (1 - store.state.purchases.autobrewer.increaseRate)));
+      return (amount: number) => Math.round(autobrewerCost.value * ((1 - Math.pow(store.purchases.autobrewer.increaseRate, amount)) / (1 - store.purchases.autobrewer.increaseRate)));
     });
-    const autobrewerUpgradeCost = computed(() => store.state.upgrades.autobrewer.nextUpgradeCost);
+    const autobrewerUpgradeCost = computed(() => store.upgrades.autobrewer.nextUpgradeCost);
 
-    const buyAutobrewer = (amount: number) => store.dispatch('buyAutobrewer', { amount: amount });
-    const upgradeAutobrewer = () => store.dispatch('upgradeUpgradable', { upgradable: 'autobrewer' });
+    const buyAutobrewer = (amount: number) => store.buyAutobrewer(amount);
+    const upgradeAutobrewer = () => store.upgradeUpgradable({ upgradable: 'autobrewer' });
 
     // Trigger startup so the ticking happens in the background worker process.
-    store.dispatch('startup');
+    store.startup();
 
     return {
       cupsOfTea,
