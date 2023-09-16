@@ -1,10 +1,12 @@
 {
   "name": "teashop",
   "version": "0.0.0",
+  "homepage": "https://libcraft-games.github.io/jay-zeronis-unusual-kitchen"
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "lodash": "^4.17.21",
