@@ -1,7 +1,7 @@
 {
   "name": "jay-zeronis-unusual-kitchen",
   "version": "0.0.0",
-  "homepage": "https://libcraft-games.github.io/jay-zeronis-unusual-kitchen"
+  "homepage": "https://libcraft-games.github.io/jay-zeronis-unusual-kitchen",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
