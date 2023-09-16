@@ -16,7 +16,7 @@ export default defineComponent({
     const lastSaveAt = computed(() => store.lastSaveAt);
     const debugMode = computed(() => store.debugMode);
     const toggleDebugMode = () => store.toggleDebugMode();
-    const saveGame = () => store.triggerSave();
+    const saveGame = () => store.$persist;
     const exportButtonText = ref('Export Save (copies to clipboard)');
 
     const importToggled = ref(false);

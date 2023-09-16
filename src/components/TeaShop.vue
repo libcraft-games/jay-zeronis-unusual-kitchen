@@ -1,6 +1,6 @@
 <script lang="ts">
 import { computed, defineComponent } from 'vue';
-import { useGameStateStore, TICKS_PER_SECOND, TICK_RATE } from '../store';
+import { TICKS_PER_SECOND, useGameStateStore } from '../store';
 import Options from './Options.vue';
 
 export default defineComponent({
@@ -17,7 +17,7 @@ export default defineComponent({
     const money = computed(() => store.money);
     const teaPrice = computed(() => store.teaPrice);
     const roundedTeaPrice = computed(() => store.teaPrice.toFixed(2));
-    const demand = computed(() => ((store.rawDemand / 100) * Math.pow((0.8 / store.teaPrice), 1.15)).toFixed(2));
+    const demand = computed(() => store.teaSoldThisTick.toFixed(2));
 
     const brewTea = () => store.brewTea();
     const increaseTeaPrice = (amount: number) => store.increaseTeaPrice(amount);

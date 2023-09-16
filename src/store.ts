@@ -5,22 +5,59 @@ import { defineStore } from "pinia";
 //       public directory.
 const worker = new Worker("./worker.js");
 
+export const TICK_RATE = 200;
+export const TICKS_PER_SECOND = 1000 / TICK_RATE;
+export const SAVE_STATE_KEY = "teaShopSave";
+
+worker.onmessage = (event) => {
+  switch (event.data.name) {
+    case "tick":
+      const store = useGameStateStore();
+      store.ticksPerSecond = event.data.ticks_per_second;
+      const isNotableTick = store.tick % store.ticksPerSecond === 0;
+      if (isNotableTick) {
+        // store current datetime as lastNotableTickAt
+        let now = Date.now();
+        // TODO: logged here is ruining my perfect switch. FIX IT 😭
+        if (store.debugMode && store.lastNotableTickAt !== null) {
+          console.log(
+            `${now - store.lastNotableTickAt}ms since last notable tick.`
+          );
+          console.log(`${store.cupsOfTea} cups of tea`);
+        }
+        store.setLastNotableTickAt(now);
+
+        // sell tea. If the demand exceeds the supply sell our whole inventory.
+        store.demandExceedsSupply
+          ? store.sellTea(store.cupsOfTea)
+          : store.sellTea(store.teaSoldThisTick);
+      }
+
+      store.tick++;
+      store.autobrew();
+
+      // Autosave every 30 seconds
+      if (store.tick % (store.ticksPerSecond * 30) === 0) {
+        store.$persist();
+      }
+
+      break;
+  }
+};
+
 type Purchasable = "autobrewer";
 type Upgradable = "autobrewer";
 
 // How often ticks happen, in milliseconds.
-export const TICK_RATE = 200;
-export const TICKS_PER_SECOND = 1000 / TICK_RATE;
 
 export type GameState = {
   lastSaveAt: number | null;
   lastNotableTickAt: number | null;
   tick: number;
+  ticksPerSecond: number;
   money: number;
   cupsOfTea: number;
-  teaPerTick: number;
   teaPrice: number;
-  rawDemand: number;
   demandBonuses: {
     level: number;
     tastiness: number;
@@ -70,8 +107,7 @@ const getDefaultGameState = (): GameState => {
     money: 0,
     cupsOfTea: 0,
     teaPrice: 2.0,
-    teaPerTick: 0,
-    rawDemand: BASE_VALUES.demand,
+    ticksPerSecond: 5,
     demandBonuses: {
       level: 1,
       tastiness: 1,
@@ -97,18 +133,41 @@ const getDefaultGameState = (): GameState => {
 };
 
 export const useGameStateStore = defineStore("gameState", {
-  state: (): GameState => getDefaultGameState(),
-  actions: {
-    // Have the worker startup in the background and begin ticking.
-    // TODO: this uses the old worker.js stuff, is it still needed? should it be moved to the appropriate mutation call? IDK!
-    async startup() {
-      worker.postMessage({ name: "startup", tick_rate: TICK_RATE });
+  state: (): GameState => {
+    return getDefaultGameState();
+  },
+  persist: {
+    storage: localStorage,
+    paths: [SAVE_STATE_KEY],
+  },
+  getters: {
+    rawDemand(): number {
+      return (
+        BASE_VALUES.demand *
+        this.demandBonuses.level *
+        this.demandBonuses.tastiness
+      );
     },
-    // Handle ticking logic asynchronously from the worker.
-    // TODO: this uses the old worker.js stuff, is it still needed? should it be moved to the appropriate mutation call? IDK!
-    async tick() {
+    teaSoldThisTick(): number {
+      return (this.rawDemand / 100) * Math.pow(0.8 / this.teaPrice, 1.15);
+    },
+    demandExceedsSupply(): boolean {
+      return this.teaSoldThisTick > this.cupsOfTea;
+    },
+    teaPerTick(): number {
+      return (
+        (this.purchases.autobrewer.count *
+          this.upgrades.autobrewer.currentOutputMultiplier) /
+        this.ticksPerSecond
+      );
+    },
+  },
+  actions: {
+    async startup() {
       worker.postMessage({
-        name: "tick",
+        name: "startup",
+        TICKS_PER_SECOND: TICKS_PER_SECOND,
+        TICK_RATE: TICK_RATE,
       });
     },
     sellTea(amount: number) {
@@ -127,7 +186,6 @@ export const useGameStateStore = defineStore("gameState", {
     purchaseUpgradable({ upgradable }: { upgradable: Upgradable }) {
       this.consumeTea(this.upgrades[upgradable].nextUpgradeCost);
       this.upgradeUpgradable({ upgradable: upgradable });
-      this.recalculateTeaPerTick();
     },
     buyAutobrewer(amount: number) {
       let increaseRate = this.purchases.autobrewer.increaseRate;
@@ -141,16 +199,12 @@ export const useGameStateStore = defineStore("gameState", {
         amount: amount,
       });
       this.increaseAutobrewerCount(amount);
-      this.recalculateTeaPerTick();
     },
     // Brew based on the number of autobrewers we have, divided by the number of ticks that occur per second.
     autobrew() {
       this.brewTea(this.teaPerTick);
     },
     // Previously Mutations. They're the good children this migration.
-    incrementTick() {
-      this.tick++;
-    },
     brewTea(amount = 1) {
       this.cupsOfTea += amount;
     },
@@ -176,12 +230,6 @@ export const useGameStateStore = defineStore("gameState", {
         }
       }
     },
-    recalculateRawDemand() {
-      this.rawDemand =
-        BASE_VALUES.demand *
-        this.demandBonuses.level *
-        this.demandBonuses.tastiness;
-    },
     increaseAutobrewerCount(amount = 1) {
       this.purchases.autobrewer.count += amount;
     },
@@ -197,8 +245,8 @@ export const useGameStateStore = defineStore("gameState", {
         payload.amount
       );
     },
-    setLastNotableTickAt(payload: { datetime: number }) {
-      this.lastNotableTickAt = payload.datetime;
+    setLastNotableTickAt(datetime: number) {
+      this.lastNotableTickAt = datetime;
     },
     upgradeUpgradable(payload: { upgradable: Upgradable }) {
       this.upgrades[payload.upgradable].level++;
@@ -207,27 +255,30 @@ export const useGameStateStore = defineStore("gameState", {
       this.upgrades[payload.upgradable].nextUpgradeCost *=
         this.upgrades[payload.upgradable].costMultiplier;
     },
-    // This mutation automatically triggers the persisted state plugin to activate.
-    triggerSave() {
-      this.lastSaveAt = Date.now();
-    },
+
     hardReset() {
-      if (localStorage.getItem("teaShopSave") !== null) {
-        localStorage.removeItem("teaShopSave");
+      if (localStorage.getItem(SAVE_STATE_KEY) !== null) {
+        localStorage.removeItem(SAVE_STATE_KEY);
       }
-      this.$state = getDefaultGameState();
+      this.$reset;
     },
     toggleDebugMode() {
       this.debugMode = !this.debugMode;
     },
-    recalculateTeaPerTick() {
-      this.teaPerTick =
-        (this.purchases.autobrewer.count *
-          this.upgrades.autobrewer.currentOutputMultiplier) /
-        TICKS_PER_SECOND;
-    },
     replaceState(savedState: GameState) {
-      this.$state = savedState;
+      this.$patch({
+        lastSaveAt: savedState.lastSaveAt,
+        lastNotableTickAt: savedState.lastNotableTickAt,
+        tick: savedState.tick,
+        ticksPerSecond: savedState.ticksPerSecond,
+        money: savedState.money,
+        cupsOfTea: savedState.cupsOfTea,
+        teaPrice: savedState.teaPrice,
+        demandBonuses: savedState.demandBonuses,
+        purchases: savedState.purchases,
+        upgrades: savedState.upgrades,
+        debugMode: savedState.debugMode,
+      });
     },
   },
 });

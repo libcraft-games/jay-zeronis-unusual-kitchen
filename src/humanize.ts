@@ -18,7 +18,7 @@ const UNIT_NAMES = [
   "Duodecillion",
   "Tredecillion",
   "Quattuordecillion",
-  "Undecillion",
+  "Quindecillion",
   "Sexdecillion",
   "Septendecillion",
   "Octodecillion",

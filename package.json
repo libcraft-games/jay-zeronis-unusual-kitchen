@@ -10,6 +10,7 @@
     "lodash": "^4.17.21",
     "millify": "^4.0.0",
     "pinia": "^2.1.6",
+    "pinia-plugin-persistedstate": "^3.2.0",
     "vue": "^3.3.4"
   },
   "devDependencies": {
