@@ -1,6 +1,6 @@
 <script lang="ts">
 import { computed, defineComponent, ref } from 'vue';
-import { useGameStateStore } from '../store';
+import { SAVE_STATE_KEY, useGameStateStore } from '../store';
 
 export default defineComponent({
   name: 'Options',
@@ -16,7 +16,7 @@ export default defineComponent({
     const lastSaveAt = computed(() => store.lastSaveAt);
     const debugMode = computed(() => store.debugMode);
     const toggleDebugMode = () => store.toggleDebugMode();
-    const saveGame = () => store.$persist;
+    const saveGame = () => store.save();
     const exportButtonText = ref('Export Save (copies to clipboard)');
 
     const importToggled = ref(false);
@@ -36,7 +36,7 @@ export default defineComponent({
     };
 
     const exportSave = () => {
-      let saveText = localStorage.getItem('teaShopSave');
+      let saveText = localStorage.getItem(SAVE_STATE_KEY);
       if (saveText === null) {
         return;
       }

@@ -5,14 +5,17 @@ import { defineStore } from "pinia";
 //       public directory.
 const worker = new Worker("./worker.js");
 
+// TODO: constants for the constants file, blood for the blood god.
 export const TICK_RATE = 200;
 export const TICKS_PER_SECOND = 1000 / TICK_RATE;
 export const SAVE_STATE_KEY = "teaShopSaveState";
 
 worker.onmessage = (event) => {
+  const store = useGameStateStore();
+  if (store.debugMode) console.log(`Event: ${event.data.name}`);
+  // TODO: all worker event names should be stored in a constants file and we should use this in place of magic strings
   switch (event.data.name) {
     case "tick":
-      const store = useGameStateStore();
       store.ticksPerSecond = event.data.ticks_per_second;
       const isNotableTick = store.tick % store.ticksPerSecond === 0;
       if (isNotableTick) {
@@ -38,9 +41,15 @@ worker.onmessage = (event) => {
 
       // Autosave every 30 seconds
       if (store.tick % (store.ticksPerSecond * 30) === 0) {
-        store.$persist();
+        store.save();
       }
 
+      break;
+    case "loadState":
+      const loadedString = localStorage.getItem(SAVE_STATE_KEY);
+      if (loadedString !== null) {
+        store.replaceState(JSON.parse(loadedString));
+      }
       break;
   }
 };
@@ -134,10 +143,6 @@ const getDefaultGameState = (): GameState => {
 
 export const useGameStateStore = defineStore("gameStore", {
   state: (): GameState => getDefaultGameState(),
-  persist: {
-    storage: localStorage,
-    key: SAVE_STATE_KEY,
-  },
   getters: {
     rawDemand(): number {
       return (
@@ -167,6 +172,17 @@ export const useGameStateStore = defineStore("gameStore", {
         TICKS_PER_SECOND: TICKS_PER_SECOND,
         TICK_RATE: TICK_RATE,
       });
+    },
+    async save() {
+      if (this.debugMode) console.log("Saving State...");
+      localStorage.setItem(SAVE_STATE_KEY, JSON.stringify(this.$state));
+    },
+    async hardReset() {
+      if (localStorage.getItem(SAVE_STATE_KEY) !== null) {
+        if (this.debugMode) console.log("Deleting State...");
+        localStorage.removeItem(SAVE_STATE_KEY);
+      }
+      this.$reset();
     },
     sellTea(amount: number) {
       if (this.debugMode) {
@@ -252,13 +268,6 @@ export const useGameStateStore = defineStore("gameStore", {
         this.upgrades[payload.upgradable].outputMultiplier;
       this.upgrades[payload.upgradable].nextUpgradeCost *=
         this.upgrades[payload.upgradable].costMultiplier;
-    },
-
-    hardReset() {
-      if (localStorage.getItem(SAVE_STATE_KEY) !== null) {
-        localStorage.removeItem(SAVE_STATE_KEY);
-      }
-      this.$reset;
     },
     toggleDebugMode() {
       this.debugMode = !this.debugMode;
