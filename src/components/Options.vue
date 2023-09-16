@@ -1,6 +1,7 @@
 <script lang="ts">
 import { computed, defineComponent, ref } from 'vue';
-import { SAVE_STATE_KEY, useGameStateStore } from '../store';
+import { useGameStateStore } from '../store';
+import { SAVE_STATE_KEY } from '../constants';
 
 export default defineComponent({
   name: 'Options',

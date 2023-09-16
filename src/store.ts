@@ -1,21 +1,37 @@
 import { cloneDeep } from "lodash";
 import { defineStore } from "pinia";
+import {
+  GameState,
+  Upgradable,
+  Purchasable,
+  getDefaultGameState,
+} from "./models/GameState";
+import {
+  DebugValues,
+  AUTOBREWER_KEY,
+  BASE_VALUES,
+  SAVE_STATE_KEY,
+  TICKS_PER_SECOND,
+  TICK_RATE,
+  SAVE_FREQUENCY_IN_SECONDS,
+  GAME_STORE_KEY,
+} from "./constants";
+import { WorkerEvents } from "./constants/WorkerEventNames";
+import {
+  MINIMUM_PRICE_CHANGE,
+  MINIMUM_SELLING_UNIT,
+  MINIMUM_UNIT,
+} from "./constants/GameValues";
 
 // TODO: Figure out how to import this from a TypeScript file not in the
 //       public directory.
 const worker = new Worker("./worker.js");
 
-// TODO: constants for the constants file, blood for the blood god.
-export const TICK_RATE = 200;
-export const TICKS_PER_SECOND = 1000 / TICK_RATE;
-export const SAVE_STATE_KEY = "teaShopSaveState";
-
 worker.onmessage = (event) => {
   const store = useGameStateStore();
-  if (store.debugMode) console.log(`Event: ${event.data.name}`);
-  // TODO: all worker event names should be stored in a constants file and we should use this in place of magic strings
+  if (store.debugMode) console.log(DebugValues.EventFired(event.data.name));
   switch (event.data.name) {
-    case "tick":
+    case WorkerEvents.TICK:
       store.ticksPerSecond = event.data.ticks_per_second;
       const isNotableTick = store.tick % store.ticksPerSecond === 0;
       if (isNotableTick) {
@@ -24,9 +40,9 @@ worker.onmessage = (event) => {
         // TODO: logged here is ruining my perfect switch. FIX IT 😭
         if (store.debugMode && store.lastNotableTickAt !== null) {
           console.log(
-            `${now - store.lastNotableTickAt}ms since last notable tick.`
+            DebugValues.TimeSinceLastNotableTick(now - store.lastNotableTickAt)
           );
-          console.log(`${store.cupsOfTea} cups of tea`);
+          console.log(DebugValues.Inventory(store.cupsOfTea));
         }
         store.setLastNotableTickAt(now);
 
@@ -39,13 +55,15 @@ worker.onmessage = (event) => {
       store.tick++;
       store.autobrew();
 
-      // Autosave every 30 seconds
-      if (store.tick % (store.ticksPerSecond * 30) === 0) {
+      // Autosave every X seconds
+      const saveFrequencyInTicks =
+        store.ticksPerSecond * SAVE_FREQUENCY_IN_SECONDS;
+      if (store.tick % saveFrequencyInTicks === 0) {
         store.save();
       }
 
       break;
-    case "loadState":
+    case WorkerEvents.LOAD_STATE:
       const loadedString = localStorage.getItem(SAVE_STATE_KEY);
       if (loadedString !== null) {
         store.replaceState(JSON.parse(loadedString));
@@ -54,94 +72,7 @@ worker.onmessage = (event) => {
   }
 };
 
-type Purchasable = "autobrewer";
-type Upgradable = "autobrewer";
-
-// How often ticks happen, in milliseconds.
-
-export type GameState = {
-  lastSaveAt: number | null;
-  lastNotableTickAt: number | null;
-  tick: number;
-  ticksPerSecond: number;
-  money: number;
-  cupsOfTea: number;
-  teaPrice: number;
-  demandBonuses: {
-    level: number;
-    tastiness: number;
-  };
-  purchases: {
-    [key in Purchasable]: {
-      count: number;
-      price: number;
-      increaseRate: number;
-    };
-  };
-  upgrades: {
-    [key in Upgradable]: {
-      level: number;
-      currentOutputMultiplier: number;
-      outputMultiplier: number;
-      costMultiplier: number;
-      nextUpgradeCost: number;
-    };
-  };
-  debugMode: boolean;
-};
-
-const BASE_VALUES = {
-  purchases: {
-    autobrewer: {
-      price: 10,
-      increaseRate: 1.01,
-    },
-  },
-  upgrades: {
-    autobrewer: {
-      outputMultiplier: 2.0,
-      costMultiplier: 5,
-      nextUpgradeCost: 100,
-    },
-  },
-  demand: 100,
-};
-
-// The state of the game when the game starts or is manually reset.
-const getDefaultGameState = (): GameState => {
-  return {
-    lastSaveAt: null,
-    lastNotableTickAt: null,
-    tick: 0,
-    money: 0,
-    cupsOfTea: 0,
-    teaPrice: 2.0,
-    ticksPerSecond: 5,
-    demandBonuses: {
-      level: 1,
-      tastiness: 1,
-    },
-    purchases: {
-      autobrewer: {
-        count: 0,
-        price: BASE_VALUES.purchases.autobrewer.price,
-        increaseRate: BASE_VALUES.purchases.autobrewer.increaseRate,
-      },
-    },
-    upgrades: {
-      autobrewer: {
-        level: 0,
-        currentOutputMultiplier: 1.0,
-        outputMultiplier: BASE_VALUES.upgrades.autobrewer.outputMultiplier,
-        costMultiplier: BASE_VALUES.upgrades.autobrewer.costMultiplier,
-        nextUpgradeCost: BASE_VALUES.upgrades.autobrewer.nextUpgradeCost,
-      },
-    },
-    debugMode: false,
-  };
-};
-
-export const useGameStateStore = defineStore("gameStore", {
+export const useGameStateStore = defineStore(GAME_STORE_KEY, {
   state: (): GameState => getDefaultGameState(),
   getters: {
     rawDemand(): number {
@@ -152,6 +83,7 @@ export const useGameStateStore = defineStore("gameStore", {
       );
     },
     teaSoldThisTick(): number {
+      // TODO: Should 0.8 and 1.15 be constants?
       return (this.rawDemand / 100) * Math.pow(0.8 / this.teaPrice, 1.15);
     },
     demandExceedsSupply(): boolean {
@@ -168,31 +100,31 @@ export const useGameStateStore = defineStore("gameStore", {
   actions: {
     async startup() {
       worker.postMessage({
-        name: "startup",
+        name: WorkerEvents.STARTUP,
         TICKS_PER_SECOND: TICKS_PER_SECOND,
         TICK_RATE: TICK_RATE,
       });
     },
     async save() {
-      if (this.debugMode) console.log("Saving State...");
+      if (this.debugMode) console.log(DebugValues.SaveInProgress);
       localStorage.setItem(SAVE_STATE_KEY, JSON.stringify(this.$state));
     },
     async hardReset() {
       if (localStorage.getItem(SAVE_STATE_KEY) !== null) {
-        if (this.debugMode) console.log("Deleting State...");
+        if (this.debugMode) console.log(DebugValues.DeleteInProgress);
         localStorage.removeItem(SAVE_STATE_KEY);
       }
       this.$reset();
     },
     sellTea(amount: number) {
       if (this.debugMode) {
-        console.log(`Selling ${amount} cups of tea`);
+        console.log(DebugValues.SellingCups(amount));
       }
-      if (amount < 0) {
+      if (amount < MINIMUM_SELLING_UNIT) {
         if (this.debugMode) {
-          console.log("Cannot sell negative amounts of tea.");
+          console.log(DebugValues.CannotSellNegativeTea);
         }
-        amount = 0;
+        amount = MINIMUM_SELLING_UNIT;
       }
       this.consumeTea(amount);
       this.earnMoney(amount * this.teaPrice);
@@ -209,7 +141,7 @@ export const useGameStateStore = defineStore("gameStore", {
         (1 - increaseRate);
       this.consumeTea(price);
       this.increasePurchasablePrice({
-        purchasable: "autobrewer",
+        purchasable: AUTOBREWER_KEY,
         amount: amount,
       });
       this.increaseAutobrewerCount(amount);
@@ -219,32 +151,32 @@ export const useGameStateStore = defineStore("gameStore", {
       this.brewTea(this.teaPerTick);
     },
     // Previously Mutations. They're the good children this migration.
-    brewTea(amount = 1) {
+    brewTea(amount = MINIMUM_UNIT) {
       this.cupsOfTea += amount;
     },
-    consumeTea(amount = 1) {
+    consumeTea(amount = MINIMUM_UNIT) {
       this.cupsOfTea -= amount;
     },
-    earnMoney(amount = 1) {
+    earnMoney(amount = MINIMUM_UNIT) {
       this.money += amount;
     },
-    spendMoney(amount = 1) {
+    spendMoney(amount = MINIMUM_UNIT) {
       this.money -= amount;
     },
-    increaseTeaPrice(amount = 0.01) {
+    increaseTeaPrice(amount = MINIMUM_PRICE_CHANGE) {
       this.teaPrice += amount;
     },
-    decreaseTeaPrice(amount = 0.01) {
-      if (this.teaPrice - amount >= 0.01) {
+    decreaseTeaPrice(amount = MINIMUM_PRICE_CHANGE) {
+      if (this.teaPrice - amount >= MINIMUM_PRICE_CHANGE) {
         this.teaPrice -= amount;
       } else {
-        this.teaPrice = 0.01;
+        this.teaPrice = MINIMUM_PRICE_CHANGE;
         if (this.debugMode) {
-          console.log("Unable to decrease price any further.");
+          console.log(DebugValues.MinimumPriceReached);
         }
       }
     },
-    increaseAutobrewerCount(amount = 1) {
+    increaseAutobrewerCount(amount = MINIMUM_UNIT) {
       this.purchases.autobrewer.count += amount;
     },
     increasePurchasablePrice(payload: {
@@ -252,7 +184,7 @@ export const useGameStateStore = defineStore("gameStore", {
       amount: number | null;
     }) {
       if (payload.amount === null) {
-        payload.amount = 1;
+        payload.amount = MINIMUM_UNIT;
       }
       this.purchases[payload.purchasable].price *= Math.pow(
         this.purchases[payload.purchasable].increaseRate,
